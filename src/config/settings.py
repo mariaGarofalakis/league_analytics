@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Global configuration for project paths, model, and training parameters."""
+    """Global configuration for project paths."""
 
     # environment
     ENVIRONMENT: str = Field(
@@ -32,11 +32,8 @@ class Settings(BaseSettings):
     )
   
     LOG_DIR: Path = Field(default=Path("logs"), description="Directory for logs")
-    RESULTS_DIR: Path = Field(
-        default=Path("results"), description="Directory for training results"
-    )
+    
 
-   
 
 
 @lru_cache()

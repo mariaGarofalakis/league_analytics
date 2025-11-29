@@ -32,11 +32,11 @@ def configure_global_logging(log_level: int = logging.INFO) -> None:
     root_logger.addHandler(console_handler)
 
     # File output
-    # Path(settings.LOG_DIR).mkdir(parents=True, exist_ok=True)
-    # file_handler = logging.FileHandler(Path(settings.LOG_DIR) / f"{APP_NAME}.log")
-    # file_handler.setLevel(log_level)
-    # file_handler.setFormatter(formatter)
-    # root_logger.addHandler(file_handler)
+    Path(settings.LOG_DIR).mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(Path(settings.LOG_DIR) / f"{APP_NAME}.log")
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
 
     # Unify known third-party loggers
     # for lib_logger_name in [

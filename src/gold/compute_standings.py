@@ -1,70 +1,61 @@
-# src/gold/compute_standings.py
-from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
-from pyspark.sql.window import Window
+from pyspark.sql import SparkSession, functions as F
 import os
-import logging
 
-def compute_standings(spark: SparkSession, base_path: str, output_csv_path: str):
-    logger = logging.getLogger("final_standings")
-    logging.basicConfig(filename='logs/final_standings.log', level=logging.INFO)
+def compute_standings(spark: SparkSession, base_path: str):
+    # Load match facts
+    matches = spark.read.format("delta").load(os.path.join(base_path, "silver/match_facts"))
 
-    df = spark.read.format("delta").load(os.path.join(base_path, "silver/match_facts"))
-
-    # Explode matches into team-based rows
-    home_df = df.selectExpr(
-        "game_id",
-        "match_date",
-        "home as team",
-        "home_goals as goals_for",
-        "away_goals as goals_against",
-        """
-        CASE
-          WHEN home_goals > away_goals THEN 'win'
-          WHEN home_goals = away_goals THEN 'draw'
-          ELSE 'loss'
-        END as result
-        """
+    # === HOME STATS ===
+    home_stats = matches.select(
+        F.col("home_team").alias("team"),
+        F.when(F.col("match_outcome") == "home_win", 1).otherwise(0).alias("wins"),
+        F.when(F.col("match_outcome") == "draw", 1).otherwise(0).alias("draws"),
+        F.when(F.col("match_outcome") == "away_win", 1).otherwise(0).alias("losses"),
+        F.col("home_goals").alias("goals_for"),
+        F.col("away_goals").alias("goals_against")
     )
 
-    away_df = df.selectExpr(
-        "game_id",
-        "match_date",
-        "away as team",
-        "away_goals as goals_for",
-        "home_goals as goals_against",
-        """
-        CASE
-          WHEN away_goals > home_goals THEN 'win'
-          WHEN away_goals = home_goals THEN 'draw'
-          ELSE 'loss'
-        END as result
-        """
+    # === AWAY STATS ===
+    away_stats = matches.select(
+        F.col("away_team").alias("team"),
+        F.when(F.col("match_outcome") == "away_win", 1).otherwise(0).alias("wins"),
+        F.when(F.col("match_outcome") == "draw", 1).otherwise(0).alias("draws"),
+        F.when(F.col("match_outcome") == "home_win", 1).otherwise(0).alias("losses"),
+        F.col("away_goals").alias("goals_for"),
+        F.col("home_goals").alias("goals_against")
     )
 
-    exploded = home_df.union(away_df)
+    # === Combine both home and away stats ===
+    all_stats = home_stats.unionByName(away_stats)
 
-    agg = exploded.groupBy("team").agg(
-        F.sum(F.expr("result = 'win'")).alias("wins"),
-        F.sum(F.expr("result = 'draw'")).alias("draws"),
-        F.sum(F.expr("result = 'loss'")).alias("losses"),
+    # === Aggregate by team ===
+    standings = all_stats.groupBy("team").agg(
+        F.sum("wins").alias("wins"),
+        F.sum("draws").alias("draws"),
+        F.sum("losses").alias("losses"),
         F.sum("goals_for").alias("goals_for"),
         F.sum("goals_against").alias("goals_against"),
-        (F.sum(F.expr("result = 'win'")) * 3 + F.sum(F.expr("result = 'draw'"))).alias("points")
+        (F.sum("wins") * 3 + F.sum("draws")).alias("points")
     )
 
-    # Ranking
-    window = Window.orderBy(
-        F.desc("points"),
-        F.desc("goals_for" - "goals_against"),
-        F.desc("goals_for"),
-        F.asc("team")
+    # === Order and rank ===
+    standings = standings.withColumn(
+        "goal_difference", F.col("goals_for") - F.col("goals_against")
+    ).withColumn(
+        "ranking", F.row_number().over(
+            F.window.OrderBy(
+                F.col("points").desc(),
+                F.col("goal_difference").desc(),
+                F.col("goals_for").desc()
+            )
+        )
     )
 
-    final = agg.withColumn("ranking", F.row_number().over(window)).select(
-        "ranking", "team", "wins", "draws", "losses", "goals_for", "goals_against", "points"
-    )
+    # === Reorder columns ===
+    final_cols = ["ranking", "team", "wins", "draws", "losses", "goals_for", "goals_against", "points"]
+    standings_final = standings.select(*final_cols).orderBy("ranking")
 
-    final.write.option("header", True).mode("overwrite").csv(output_csv_path)
+    # === Save to gold layer ===
+    standings_final.write.format("delta").mode("overwrite").save(os.path.join(base_path, "gold/standings"))
 
-    logger.info("Final standings successfully computed and written to CSV.")
+    print("✅ Standings table written to gold/standings")

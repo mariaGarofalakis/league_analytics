@@ -6,6 +6,7 @@ from src.utils.logger import get_logger
 from pyspark.sql import DataFrame
 from pyspark.sql.types import StructType
 from typing import List, Dict, Optional
+from itertools import combinations
 
 logger = get_logger(__name__)
 
@@ -18,13 +19,13 @@ def validate_dataframe(
     values_between: Optional[dict] = None,
     date_time_in_range: Optional[dict] = None,
     team_unique_per_round: Optional[List[str]]= None,
-    diff_columns: Optional[List[List[str]]]=None
+    diff_columns: Optional[List[List[str]]]=None,
+    game_ids_match: Optional[List[DataFrame]]=None
 )  -> bool:
     logger.info("🔎 Validating DataFrame...")
     
     exp = Expectations()
 
-    
     if schema:
         runner.run(exp.schema(df, schema), "Schema validation")
     if diff_columns is not None:
@@ -57,8 +58,11 @@ def validate_dataframe(
                 exp.column_datetime_in_range(df, col, start_date=start_date, end_date=end_date),
                 f"Date time range check on '{col}'"
             )
-        
-        
+    if game_ids_match:
+        for i, j in combinations(range(len(game_ids_match)), 2):
+            df1, df2 = game_ids_match[i], game_ids_match[j]
+            label = f"df[{i}] vs df[{j}]"
+            runner.run(exp.game_ids_match(df1, df2), f"check {label} matching of game_id columns")
 
     runner.report()
 

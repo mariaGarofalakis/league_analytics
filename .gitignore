@@ -3,3 +3,92 @@
 \delta
 \logs
 \jars
+
+# -------------------------
+# Python cache / bytecode
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# C extensions
+*.so
+
+# -------------------------
+# Virtual environments
+# -------------------------
+.vscode/
+.venv/
+venv/
+env/
+ENV/
+.uv/
+
+# pip / uv / poetry / pipenv environments
+.pyenv/
+poetry.lock
+pip-wheel-metadata/
+
+# -------------------------
+# Build / packaging
+# -------------------------
+build/
+dist/
+*.egg-info/
+*.eggs/
+.eggs/
+
+# -------------------------
+# Logs / debug / runtime files
+# -------------------------
+*.log
+*.tmp
+*.temp
+*.pid
+
+# -------------------------
+# Jupyter notebooks
+# -------------------------
+.ipynb_checkpoints/
+*.ipynb.tmp
+
+# -------------------------
+# Coverage & testing
+# -------------------------
+.coverage
+.tox/
+pytest_cache/
+htmlcov/
+
+# -------------------------
+# IDE / Editor settings
+# -------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# -------------------------
+# OS files
+# -------------------------
+.DS_Store
+Thumbs.db
+
+# -------------------------
+# Spark / Hadoop / Delta
+# -------------------------
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+.delta/
+_delta_log/
+
+# -------------------------
+# Project-specific
+# -------------------------
+data/
+datasets/
+temp/

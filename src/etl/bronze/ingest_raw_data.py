@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 import ast, re
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.utils.logger import get_logger
 from src.validators.dataframe_validation import validate_dataframe
 import os
@@ -11,15 +11,57 @@ from src.utils.constands import (
       RAW_SCHEDULE_SCHEMA,
       SCORES_SCHEMA,
       SCHEDULE_SCHEMA,
-      YEARLY_ROUNDS
+      YEARLY_ROUNDS,
+      START_DATE,
+      END_DATE
       )
 from src.validators.expectations import Expectations
 
 logger = get_logger(__name__)
 
 
+def get_weekly_run_datetime(iteration: int) -> datetime:
+    """
+    Given an iteration number (0–38), return the Monday 08:00 datetime
+    corresponding to that iteration.
+    """
+    if iteration < 0:
+        raise ValueError("Iteration must be >= 0")
+    
+    return START_DATE + timedelta(weeks=iteration) 
 
+def batching_data(week_itr, scores_df, schedule_df,batch: bool = False):
+    if batch:
+        if week_itr == 0:
+            min_round = week_itr +1
+            max_round = week_itr +1
+        else:
+             min_round = week_itr
+             max_round = week_itr +1
+        logger.info("Implementing batching of data for a time period of a week")
+        end_time = get_weekly_run_datetime(week_itr+1)
+        start_time = get_weekly_run_datetime(week_itr)
+        logger.info(f"Data arrived at {end_time}")
+        logger.info(f"Filtering period {start_time} - {end_time}")
+        logger.info(f"Filtering scores table column ingestion_time for the period {start_time} - {end_time}")
+        scores_df = scores_df.withColumn(
+            "ingestion_timestamp",
+            F.to_timestamp("ingestion_time", "yyyy-MM-dd'T'HH:mm:ss'Z'")).filter(
+            (F.col("ingestion_timestamp") >= start_time) &
+            (F.col("ingestion_timestamp") < end_time)
+        ).drop("ingestion_timestamp")
+        logger.info("Filtering scedule table for the same period based on game_id")
+        schedule_df = schedule_df.join(
+            scores_df.select("game_id"),
+            on="game_id",
+            how="left_semi"
+        )
 
+        return scores_df, schedule_df, start_time, end_time, round, min_round, max_round
+        
+    else:
+        logger.info("We calculate total total_standings no batching needed...")
+        return scores_df, schedule_df, START_DATE, END_DATE, 1, YEARLY_ROUNDS
 
 def drop_mismatched_game_ids(df1, df2, result, df1_name="scores_df", df2_name="schedule_df"):
     
@@ -41,13 +83,15 @@ def drop_mismatched_game_ids(df1, df2, result, df1_name="scores_df", df2_name="s
 
 
 
-def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
+def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str, week_itr: int = 0, batch: bool = False):
     logger.info("Starting bronze layer ingestion...")
 
     
     logger.info(f"Reading source data")
     scores_df = spark.read.csv(input_path+"/scores.csv", header=True)
     schedule_df = spark.read.csv(input_path+"/schedule.csv", header=True)
+
+    scores_df, schedule_df, start_time, end_time, min_round, max_round = batching_data(week_itr=week_itr, scores_df=schedule_df,  schedule_df=schedule_df, batch=batch )    
 
     ########### Validation of source data #######################
     # Validating source dataframes (mode=soft)
@@ -65,7 +109,7 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
            "away_goals": {"min_value": 0}
         },
         date_time_in_range={
-           "ingestion_time": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026,5,18)}   
+           "ingestion_time": {"start_date": start_time, "end_date": end_time}   
         }
 
         ):
@@ -81,11 +125,11 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
         unique_columns=["game_id"],
         not_null_columns=schedule_df.columns, # check all columns
         values_between={
-           "round": {"min_value": 1, "max_value": YEARLY_ROUNDS},
+           "round": {"min_value": min_round, "max_value": max_round},
            
         },
         date_time_in_range={
-           "game_start_time": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026,5,18)}   
+           "game_start_time": {"start_date": start_time, "end_date": end_time}   
         },
         team_unique_per_round=["home_team", "away_team"],
         diff_columns=[["home_team","away_team"]]
@@ -154,7 +198,7 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
            "away_goals": {"min_value": 0}
         },
         date_time_in_range={
-           "ingestion_time": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026,5,18)}   
+           "ingestion_time": {"start_date": start_time, "end_date": end_time}   
         }
 
         ):
@@ -172,11 +216,11 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
         unique_columns=["game_id"],
         not_null_columns=schedule_df.columns, # check all columns
         values_between={
-           "round": {"min_value": 1, "max_value": YEARLY_ROUNDS},
+           "round": {"min_value": min_round, "max_value": max_round},
            
         },
         date_time_in_range={
-           "game_start_time": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026,5,18)}   
+           "game_start_time": {"start_date": start_time, "end_date": end_time}   
         },
         team_unique_per_round=["home_team", "away_team"],
         diff_columns=[["home_team","away_team"]]
@@ -187,13 +231,21 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
     
     logger.info("✅ The bronze validation finished successfully ready to save to delta")
 
+    if batch:
+         logger.info("Save iteratevelly the ingested data")
+         schedule_df.write.format("delta").mode("append").save(
+            os.path.join(output_path, "bronze/schedule_itr")
+        )
 
-    
-    schedule_df.write.format("delta").mode("overwrite").save(
-        os.path.join(output_path, "bronze/schedule")
-    )
-    scores_df.write.format("delta").partitionBy("ingestion_date").mode("overwrite").save(
-        os.path.join(output_path, "bronze/scores")
-    )
+         scores_df.write.format("delta").partitionBy("ingestion_date").mode("append").save(
+            os.path.join(output_path, "bronze/scores_itr")
+        )
+    else:
+        schedule_df.write.format("delta").mode("overwrite").save(
+            os.path.join(output_path, "bronze/schedule")
+        )
+        scores_df.write.format("delta").partitionBy("ingestion_date").mode("overwrite").save(
+            os.path.join(output_path, "bronze/scores")
+        )
 
     logger.info("✅ Bronze ingestion completed and data written to Delta.")

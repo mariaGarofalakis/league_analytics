@@ -1,0 +1,44 @@
+version: '3'
+
+dotenv: ['.env', '{{.HOME}}/.env']
+
+vars:
+  SPARK_JOBS_DIR: src.spark_jobs
+  SPARK_SUBMIT: uv run -m
+
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  set_up_project:
+    desc: Setting up the project
+    cmds:
+      - uv sync
+  ingest:
+    desc: 🚀 Run ingestion step
+    cmds:
+      - echo "🚀 Running ingestion step..."
+      - "{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.execute_ingestion"
+
+  match_facts:
+    desc: ⚽ Build match facts table
+    cmds:
+      - echo "⚽ Building match facts table..."
+      - "{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.match_fact_table"
+
+  standings:
+    desc: 📊 Compute total standings
+    cmds:
+      - echo "📊 Computing total standings..."
+      - "{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.execute_total_standings"
+
+  calculating_total_standings:
+    desc: 🏁 Full pipeline! ingestion → match facts → standings
+    cmds:
+    - task: ingest
+    - task: match_facts
+    - task: standings

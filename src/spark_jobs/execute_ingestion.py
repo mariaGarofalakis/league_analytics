@@ -1,5 +1,5 @@
 import argparse
-from src.bronze.ingest_raw_data import ingest_raw_data
+from src.etl.bronze.ingest_raw_data import ingest_raw_data
 from src.utils.spark_functions import create_spark_session
 from src.utils.logger import get_logger, configure_global_logging
 

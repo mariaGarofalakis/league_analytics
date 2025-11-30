@@ -1,5 +1,5 @@
 import argparse
-from src.gold.compute_standings import compute_standings
+from src.etl.gold.compute_standings import compute_standings
 from src.utils.spark_functions import create_spark_session
 from src.utils.logger import get_logger, configure_global_logging
 

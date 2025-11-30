@@ -1,5 +1,5 @@
 import argparse
-from src.silver.build_match_facts import build_match_facts
+from src.etl.silver.build_match_facts import build_match_facts
 from src.utils.spark_functions import create_spark_session
 from src.utils.logger import get_logger, configure_global_logging
 

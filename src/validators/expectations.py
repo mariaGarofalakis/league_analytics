@@ -1,7 +1,7 @@
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import col, expr, count, to_timestamp
 from pyspark.sql.utils import AnalysisException
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from datetime import datetime
 from dataclasses import dataclass
 from pyspark.sql.types import StructType, FloatType, StringType, IntegerType, TimestampType
@@ -177,3 +177,41 @@ class Expectations:
         return False, ExpectationResult(
             f"❌ Row count mismatch:\n- df1: {count1} rows\n- df2: {count2} rows\n- Difference: {abs(count1 - count2)} row(s)"
         )
+    
+    def column_has_values(
+        self, 
+        df: DataFrame, 
+        column: str, 
+        allowed_values: List[str]
+    ) -> Tuple[bool, str]:
+        """
+        Validates that all non-null values in the column are part of the allowed list.
+
+        Parameters:
+        - df: DataFrame to validate
+        - column: Name of the column to check
+        - allowed_values: List of allowed values (strings)
+
+        Returns:
+        - (success: bool, message: str)
+        """
+
+        # Check if the column exists
+        if column not in df.columns:
+            return False, f"Column '{column}' not found in DataFrame"
+
+        # Filter values not in allowed list
+        invalid_rows = df.filter(
+            col(column).isNotNull() & ~col(column).isin(allowed_values)
+        )
+
+        invalid_count = invalid_rows.count()
+
+        if invalid_count > 0:
+            sample = [row[column] for row in invalid_rows.limit(5).collect()]
+            return False, (
+                f"❌ Column '{column}' contains {invalid_count} invalid values "
+                f"(not in allowed list: {allowed_values}). Sample: {sample}"
+            )
+
+        return True, f"✅ Column '{column}' only contains allowed values: {allowed_values}"

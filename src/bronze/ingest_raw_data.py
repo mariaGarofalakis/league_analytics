@@ -6,27 +6,20 @@ from src.utils.logger import get_logger
 from src.validators.dataframe_validation import validate_dataframe
 import os
 from src.validators.runner import ExpectationRunner
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, TimestampType
+from src.utils.constands import (
+      RAW_SCORES_SCHEMA,
+      RAW_SCHEDULE_SCHEMA,
+      SCORES_SCHEMA,
+      SCHEDULE_SCHEMA,
+      YEARLY_ROUNDS
+      )
 from src.validators.expectations import Expectations
 
 logger = get_logger(__name__)
 
 
 
-SCORES_SCHEMA = StructType([
-    StructField("game_id", StringType(), nullable=False),
-    StructField("home_goals", IntegerType(), nullable=False),
-    StructField("away_goals", IntegerType(), nullable=False),
-    StructField("ingestion_time", TimestampType(), nullable=True),
-])
 
-SCHEDULE_SCHEMA = StructType([
-    StructField("game_id", StringType(), nullable=False),
-    StructField("round", IntegerType(), nullable=False),
-    StructField("home_team", StringType(), nullable=False),
-    StructField("away_team", StringType(), nullable=True),
-    StructField("game_start_time", TimestampType(), nullable=True),
-])
 
 def drop_mismatched_game_ids(df1, df2, result, df1_name="scores_df", df2_name="schedule_df"):
     
@@ -64,7 +57,7 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
     if not validate_dataframe(
         df=scores_df, 
         runner=runner,
-    #    schema=SCORES_SCHEMA,
+        schema=RAW_SCORES_SCHEMA,
         unique_columns=["game_id"],
         not_null_columns=scores_df.columns, # check all columns
         values_between={
@@ -84,10 +77,11 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
     if not validate_dataframe(
         df=schedule_df, 
         runner=runner,
+        schema=RAW_SCHEDULE_SCHEMA,
         unique_columns=["game_id"],
         not_null_columns=schedule_df.columns, # check all columns
         values_between={
-           "round": {"min_value": 1, "max_value": 38},
+           "round": {"min_value": 1, "max_value": YEARLY_ROUNDS},
            
         },
         date_time_in_range={
@@ -178,7 +172,7 @@ def ingest_raw_data(spark: SparkSession, input_path: str, output_path: str):
         unique_columns=["game_id"],
         not_null_columns=schedule_df.columns, # check all columns
         values_between={
-           "round": {"min_value": 1, "max_value": 38},
+           "round": {"min_value": 1, "max_value": YEARLY_ROUNDS},
            
         },
         date_time_in_range={

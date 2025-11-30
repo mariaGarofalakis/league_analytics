@@ -5,26 +5,13 @@ from pyspark.sql import functions as F
 from datetime import datetime
 import os
 from src.validators.dataframe_validation import validate_dataframe
-from pyspark.sql.types import StructType, StructField, StringType, DateType, IntegerType, TimestampType
+from src.utils.constands import MATCH_SCHEMA, YEARLY_ROUNDS
 from src.utils.logger import get_logger
 from src.validators.runner import ExpectationRunner
 
 logger = get_logger()
 
-MATCH_SCHEMA = StructType([
-    StructField("game_id", StringType(), nullable=True),
-    StructField("round", IntegerType(), nullable=True),
-    StructField("home_team", StringType(), nullable=True),
-    StructField("away_team", StringType(), nullable=True),
-    StructField("match_time", TimestampType(), nullable=True),
-    StructField("match_date", DateType(), nullable=True),
-    StructField("home_goals", IntegerType(), nullable=True),
-    StructField("away_goals", IntegerType(), nullable=True),
-    StructField("ingestion_time", TimestampType(), nullable=True),
-    StructField("ingestion_date", DateType(), nullable=True),
-    StructField("goal_difference", IntegerType(), nullable=True),
-    StructField("match_outcome", StringType(), nullable=True),
-])
+
 
 def build_match_facts(spark: SparkSession, base_path: str):
     # Load bronze Delta tables
@@ -56,7 +43,7 @@ def build_match_facts(spark: SparkSession, base_path: str):
         unique_columns=["game_id"],
         not_null_columns=matches.columns, # check all columns
         values_between={
-           "round": {"min_value": 1, "max_value": 38},
+           "round": {"min_value": 1, "max_value": YEARLY_ROUNDS},
            "home_goals": {"min_value": 0},
            "away_goals": {"min_value": 0},
            

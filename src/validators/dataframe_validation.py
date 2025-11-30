@@ -20,7 +20,8 @@ def validate_dataframe(
     date_time_in_range: Optional[dict] = None,
     team_unique_per_round: Optional[List[str]]= None,
     diff_columns: Optional[List[List[str]]]=None,
-    game_ids_match: Optional[List[DataFrame]]=None
+    game_ids_match: Optional[List[DataFrame]]=None,
+    column_has_values: Optional[dict] = None
 )  -> bool:
     logger.info("🔎 Validating DataFrame...")
     
@@ -48,6 +49,12 @@ def validate_dataframe(
             runner.run(
                 exp.column_values_between(df, col, min_val=min_val, max_val=max_val),
                 f"Range check on '{col}'"
+            )
+    if column_has_values:
+        for col, list in column_has_values.items():
+            runner.run(
+                exp.column_has_values(df, col, list),
+                f"Allowed values on '{col}'"
             )
     if date_time_in_range is not None:
         for col, bounds in date_time_in_range.items():

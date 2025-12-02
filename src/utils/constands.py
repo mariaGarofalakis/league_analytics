@@ -2,7 +2,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 from datetime import datetime
 
 START_DATE = datetime(2025, 8, 18, 8, 0)
-END_DATE = datetime(2025, 8, 18, 8, 0) 
+END_DATE = datetime(2026, 5, 18, 8, 0) 
 YEARLY_ROUNDS = 38
 
 TEAMS_LIST = ['Chelsea', 'Arsenal', 'Liverpool', 'Manchester City', 'Aston Villa', 'Nottingham', 'Manchester Utd', 'Newcastle', 'Tottenham Hotspur', 'Brighton', 'Crystal Palace', 'Everton', 'West Ham', 'Sunderland', 'Wolves', 'Fulham', 'Burnley', 'Leeds United', 'Brentford', 'Bournemouth']

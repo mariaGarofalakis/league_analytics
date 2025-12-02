@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: league_db
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mydb"]
+      interval: 3s
+      retries: 5
+
+  etl:
+    build: .
+    container_name: league_etl
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src/etl/gold/compute_recent_form.py:/app/compute_recent_form.py
+      - ./output:/app/output
+    environment:
+      DB_HOST: postgres
+      DB_USER: myuser
+      DB_PASS: mypassword
+      DB_NAME: mydb
+
+
+volumes:
+  pgdata:

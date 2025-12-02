@@ -2,21 +2,31 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-from datetime import datetime
 import os
 from src.validators.dataframe_validation import validate_dataframe
-from src.utils.constands import MATCH_SCHEMA, YEARLY_ROUNDS
+from src.utils.constands import MATCH_SCHEMA
 from src.utils.logger import get_logger
 from src.validators.runner import ExpectationRunner
+from src.utils.spark_functions import get_week_info
 
 logger = get_logger()
 
 
 
-def build_match_facts(spark: SparkSession, base_path: str):
+def build_match_facts(spark: SparkSession, base_path: str, week_itr: int, batch: bool):
     # Load bronze Delta tables
-    schedule = spark.read.format("delta").load(os.path.join(base_path, "bronze/schedule"))
-    scores = spark.read.format("delta").load(os.path.join(base_path, "bronze/scores"))
+
+    start_time, end_time, min_round, max_round, updated_at = get_week_info(week_itr=week_itr, batch=batch)
+
+    if batch:
+        scedule_path = "bronze/schedule_hist"
+        scores_path = "bronze/scores_hist"
+    else:
+        scedule_path = "bronze/schedule"
+        scores_path = "bronze/scores"
+
+    schedule = spark.read.format("delta").load(os.path.join(base_path, scedule_path)).filter(F.col("updated_at")==updated_at).drop("updated_at")
+    scores = spark.read.format("delta").load(os.path.join(base_path, scores_path)).filter(F.col("updated_at")==updated_at)
 
     # Join them on game_id and enrich
     matches = (
@@ -32,7 +42,8 @@ def build_match_facts(spark: SparkSession, base_path: str):
         )
     )
     logger.info("match facts transformation is ready now validating")
-
+    
+    
     ########### Validate  match facts #######################
     runner = ExpectationRunner(mode="strict")
     logger.info("Validation schedule dataframe.... ")
@@ -43,7 +54,7 @@ def build_match_facts(spark: SparkSession, base_path: str):
         unique_columns=["game_id"],
         not_null_columns=matches.columns, # check all columns
         values_between={
-           "round": {"min_value": 1, "max_value": YEARLY_ROUNDS},
+           "round": {"min_value": min_round, "max_value": max_round},
            "home_goals": {"min_value": 0},
            "away_goals": {"min_value": 0},
            
@@ -51,10 +62,9 @@ def build_match_facts(spark: SparkSession, base_path: str):
         team_unique_per_round=["home_team", "away_team"],
         diff_columns=[["home_team","away_team"]],
         date_time_in_range={
-            "match_date": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026, 5, 18)},
-            "match_time": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026, 5, 18)},
-            "ingestion_time": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026, 5, 18)},
-            "ingestion_date": {"start_date": datetime(2025, 8, 22), "end_date": datetime(2026, 5, 18)},
+            "match_time": {"start_date": start_time, "end_date": end_time},
+            "ingestion_time": {"start_date": start_time, "end_date": end_time},
+            "updated_at": {"start_date": updated_at, "end_date": updated_at}
             },
         game_ids_match=[schedule, scores, matches]
         
@@ -67,6 +77,13 @@ def build_match_facts(spark: SparkSession, base_path: str):
     logger.info(f"✅ Match Facts table transformation completed ready to save to delt in path {base_path}/silver")
 
     # Write the silver table
-    matches.write.format("delta").mode("overwrite").save(
+    if batch:
+        matches.write.format("delta").partitionBy("updated_at").mode("append").save(
+        os.path.join(base_path, "silver/match_facts_hist")
+    )
+    else:
+        matches.write.format("delta").mode("overwrite").save(
         os.path.join(base_path, "silver/match_facts")
     )
+
+    

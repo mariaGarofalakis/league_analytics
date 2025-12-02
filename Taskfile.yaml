@@ -5,7 +5,9 @@ dotenv: ['.env', '{{.HOME}}/.env']
 vars:
   SPARK_JOBS_DIR: src.spark_jobs
   SPARK_SUBMIT: uv run -m
-
+  OPTIONAL_ARGS: |
+    {{- if .WEEK_ITR }} --week_itr {{.WEEK_ITR}}{{ end -}}
+    {{- if .BATCH }} --batch {{.BATCH}}{{ end -}}
 
 tasks:
   default:
@@ -18,27 +20,82 @@ tasks:
     desc: Setting up the project
     cmds:
       - uv sync
-  ingest:
-    desc: 🚀 Run ingestion step
+
+  compute_recent_form:
+    desc: Calculates recent_form.csv on top of historical_standings.csv
     cmds:
-      - echo "🚀 Running ingestion step..."
-      - "{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.execute_ingestion"
+      - docker compose up
+      - docker compose down -v
+
+
+  save_csv:
+    desc: Save delta table into a csv file
+    vars:
+      INPUT_FILE_PATH: '{{.INPUT_FILE_PATH}}'
+      OUTPUT_FILE_NAME: '{{.OUTPUT_FILE_NAME}}'
+      LOG_PATH: '{{.LOG_PATH}}'
+    cmds:
+      - echo "Save delta table into a csv file task"
+      - '{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.save_to_csv --input_file_path {{.INPUT_FILE_PATH}} --output_file_name {{.OUTPUT_FILE_NAME}} --log_path {{.LOG_PATH}}'
+
+  ingest:
+    desc: "🚀 Run ingestion step"
+    vars:
+      WEEK_ITR: '{{.WEEK_ITR}}'
+      BATCH: '{{.BATCH}}'
+      LOG_PATH: '{{.LOG_PATH}}'
+      OPTIONAL_ARGS: |
+        {{- if .WEEK_ITR }} --week_itr {{.WEEK_ITR}}{{ end -}}
+        {{- if .BATCH }} --batch {{.BATCH}}{{ end -}}
+    cmds:
+      - echo "🚀 Running ingestion step... week_itr={{.WEEK_ITR}}, batch={{.BATCH}}"
+      - '{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.execute_ingestion {{.OPTIONAL_ARGS}} --log_path {{.LOG_PATH}}'
 
   match_facts:
-    desc: ⚽ Build match facts table
+    desc: "⚽ Build match facts table"
+    vars:
+      WEEK_ITR: '{{.WEEK_ITR}}'
+      BATCH: '{{.BATCH}}'
+      LOG_PATH: '{{.LOG_PATH}}'
+      OPTIONAL_ARGS: |
+        {{- if .WEEK_ITR }} --week_itr {{.WEEK_ITR}}{{ end -}}
+        {{- if .BATCH }} --batch {{.BATCH}}{{ end -}}
     cmds:
       - echo "⚽ Building match facts table..."
-      - "{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.match_fact_table"
+      - '{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.match_fact_table {{.OPTIONAL_ARGS}} --log_path {{.LOG_PATH}}'
 
   standings:
-    desc: 📊 Compute total standings
+    desc: "📊 Compute total standings"
+    vars:
+      WEEK_ITR: '{{.WEEK_ITR}}'
+      BATCH: '{{.BATCH}}'
+      LOG_PATH: '{{.LOG_PATH}}'
+      OPTIONAL_ARGS: |
+        {{- if .WEEK_ITR }} --week_itr {{.WEEK_ITR}}{{ end -}}
+        {{- if .BATCH }} --batch {{.BATCH}}{{ end -}}
     cmds:
       - echo "📊 Computing total standings..."
-      - "{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.execute_total_standings"
+      - '{{.SPARK_SUBMIT}} {{.SPARK_JOBS_DIR}}.execute_total_standings {{.OPTIONAL_ARGS}} --log_path {{.LOG_PATH}}'
 
   calculating_total_standings:
-    desc: 🏁 Full pipeline! ingestion → match facts → standings
+    desc: "🏁 Full pipeline! ingestion → match facts → standings"
     cmds:
-    - task: ingest
-    - task: match_facts
-    - task: standings
+      - |
+          LOG_PATH="logs/standings_historical.log"
+          task ingest LOG_PATH=$LOG_PATH
+          task match_facts LOG_PATH=$LOG_PATH
+          task standings LOG_PATH=$LOG_PATH
+          task save_csv INPUT_FILE_PATH="standings" OUTPUT_FILE_NAME="standings_final.csv" LOG_PATH=$LOG_PATH
+
+  calculating_historical_standings:
+    desc: "🏁 Full pipeline! ingestion → match facts → standings"
+    cmds:
+      - |
+          LOG_PATH="logs/standings_historical.log"
+          for i in $(seq 0 39); do
+            echo "🏁 Running week_itr $i"
+            task ingest WEEK_ITR=$i BATCH=true LOG_PATH=$LOG_PATH
+            task match_facts WEEK_ITR=$i BATCH=true LOG_PATH=$LOG_PATH
+            task standings WEEK_ITR=$i BATCH=true LOG_PATH=$LOG_PATH
+          done
+          task save_csv INPUT_FILE_PATH="standings_hist" OUTPUT_FILE_NAME="standings_historical.csv" LOG_PATH=$LOG_PATH
